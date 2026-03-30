@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.js.map
+.claude-token-tracker/
+.env
+.env.*
+*.tgz
+*.pem
+credentials.json

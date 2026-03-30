@@ -1,0 +1,38 @@
+{
+  "name": "claude-token-tracker",
+  "version": "1.0.0",
+  "description": "Per-component token usage tracking for Claude Code ecosystems",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "claude-token-tracker": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "token-usage",
+    "cost-tracking",
+    "usage-monitoring"
+  ],
+  "author": "npezarro",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
+}
