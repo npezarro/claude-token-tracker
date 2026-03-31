@@ -7,6 +7,8 @@
  */
 
 import { recordSession } from './commands/record.js';
+import { publishLogs } from './commands/publish-logs.js';
+import { loadConfig } from './config/config.js';
 
 async function main() {
   // Read stdin (non-blocking, with timeout)
@@ -40,6 +42,14 @@ async function main() {
   if (result) {
     // Output approve decision for the hook system
     console.log(JSON.stringify({ decision: 'approve' }));
+
+    // Fire-and-forget: publish this session's log to the git repo
+    // Don't await — the hook must finish fast
+    loadConfig().then(config => {
+      if (config.sessionLogsPath) {
+        publishLogs({ repoPath: config.sessionLogsPath, since: result.startedAt }).catch(() => {});
+      }
+    }).catch(() => {});
   }
 }
 
