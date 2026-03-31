@@ -61,4 +61,6 @@ export interface TrackerConfig {
   components: Record<string, { patterns: string[]; description?: string }>;
   defaultComponent: string;
   dataDir?: string;
+  sessionLogsRepo?: string; // GitHub repo URL for session logs (e.g., https://github.com/user/repo)
+  sessionLogsPath?: string; // Local path to the session logs git repo
 }

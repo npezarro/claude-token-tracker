@@ -1,4 +1,6 @@
 import { readUsageLog } from '../storage/usage-log.js';
+import { loadConfig } from '../config/config.js';
+import { getSessionLogUrl } from './publish-logs.js';
 import type { UsageRecord } from '../storage/types.js';
 
 function formatTokens(n: number): string {
@@ -87,7 +89,7 @@ function buildSummary(label: string, records: UsageRecord[]): string {
 /**
  * Build the per-session detail for all components (all sessions, no truncation).
  */
-function buildSessionDetail(label: string, records: UsageRecord[]): string {
+function buildSessionDetail(label: string, records: UsageRecord[], repoUrl?: string): string {
   if (records.length === 0) return '';
 
   const byComponent = new Map<string, UsageRecord[]>();
@@ -111,9 +113,16 @@ function buildSessionDetail(label: string, records: UsageRecord[]): string {
     lines.push(`__${comp.name}__ (${sorted.length} sessions, ${formatTokens(comp.totalTokens)} total)`);
 
     for (const s of sorted) {
-      const sessionLabel = truncate(s.label || s.sessionId.slice(0, 8), 65);
+      const sessionLabel = truncate(s.label || s.sessionId.slice(0, 8), 60);
       const time = s.startedAt ? s.startedAt.slice(5, 16).replace('T', ' ') : '';
-      lines.push(`\u2003\u2022 \`${formatTokens(s.totalTokens).padStart(7)}\` ${time} \u2014 ${sessionLabel}`);
+      const tokens = `\`${formatTokens(s.totalTokens).padStart(7)}\``;
+
+      if (repoUrl) {
+        const url = getSessionLogUrl(s.sessionId, s.startedAt, repoUrl);
+        lines.push(`\u2003\u2022 ${tokens} ${time} \u2014 [${sessionLabel}](${url})`);
+      } else {
+        lines.push(`\u2003\u2022 ${tokens} ${time} \u2014 ${sessionLabel}`);
+      }
     }
   }
 
@@ -134,6 +143,8 @@ export interface DiscordReportOptions {
 export async function generateDiscordReportChunks(options: DiscordReportOptions = {}): Promise<string[]> {
   const { period = 'both' } = options;
   const records = await readUsageLog();
+  const config = await loadConfig();
+  const repoUrl = config.sessionLogsRepo;
 
   const now = new Date();
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -159,11 +170,11 @@ export async function generateDiscordReportChunks(options: DiscordReportOptions 
 
   // Build session detail (threaded messages)
   if (period === '24h' || period === 'both') {
-    const detail24h = buildSessionDetail('Last 24 hours', last24h);
+    const detail24h = buildSessionDetail('Last 24 hours', last24h, repoUrl);
     if (detail24h) chunks.push(detail24h);
   }
   if (period === '7d' || period === 'both') {
-    const detail7d = buildSessionDetail('Last 7 days', last7d);
+    const detail7d = buildSessionDetail('Last 7 days', last7d, repoUrl);
     if (detail7d) chunks.push(detail7d);
   }
 

@@ -7,6 +7,7 @@ import { exportData } from './commands/export.js';
 import { loadConfig, saveConfig, getConfigPath } from './config/config.js';
 import { getUsageLogPath } from './storage/usage-log.js';
 import { generateDiscordReport, postDiscordReport } from './commands/discord-report.js';
+import { publishLogs } from './commands/publish-logs.js';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -184,6 +185,18 @@ async function main() {
           process.exit(1);
         }
       }
+      break;
+    }
+
+    case 'publish-logs': {
+      const config = await loadConfig();
+      const result = await publishLogs({
+        repoPath: getFlag('repo-path') || config.sessionLogsPath,
+        since: getFlag('since'),
+        force: hasFlag('force'),
+        verbose: hasFlag('verbose'),
+      });
+      console.log(`Published ${result.published} session logs, ${result.skipped} skipped`);
       break;
     }
 
