@@ -1,6 +1,6 @@
 import { createReadStream, existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { readUsageLog } from '../storage/usage-log.js';
 import { getDataDir } from '../storage/usage-log.js';
@@ -31,40 +31,43 @@ async function processTranscript(filePath: string): Promise<string> {
   for await (const line of rl) {
     if (!line.trim()) continue;
 
-    let entry: any;
+    let entry: Record<string, unknown>;
     try {
-      entry = JSON.parse(line);
+      entry = JSON.parse(line) as Record<string, unknown>;
     } catch {
       continue;
     }
 
-    if (entry.sessionId && !sessionId) sessionId = entry.sessionId;
-    if (entry.cwd && !cwd) cwd = entry.cwd;
-    if (entry.gitBranch && !gitBranch) gitBranch = entry.gitBranch;
-    if (entry.timestamp && !startedAt) startedAt = entry.timestamp;
+    if (entry.sessionId && !sessionId) sessionId = entry.sessionId as string;
+    if (entry.cwd && !cwd) cwd = entry.cwd as string;
+    if (entry.gitBranch && !gitBranch) gitBranch = entry.gitBranch as string;
+    if (entry.timestamp && !startedAt) startedAt = entry.timestamp as string;
+
+    const message = entry.message as Record<string, unknown> | undefined;
 
     // User messages
-    if (entry.type === 'user' && entry.message?.role === 'user') {
-      const content = entry.message.content;
+    if (entry.type === 'user' && message?.role === 'user') {
+      const content = message.content;
       let text = '';
       if (typeof content === 'string') {
         text = content;
       } else if (Array.isArray(content)) {
         text = content
-          .filter((b: any) => b.type === 'text')
-          .map((b: any) => b.text)
+          .filter((b: Record<string, unknown>) => b.type === 'text')
+          .map((b: Record<string, unknown>) => b.text as string)
           .join('\n');
       }
       // Skip tool results that appear as user messages
       if (entry.toolUseResult) {
         // Summarize tool result
-        const stdout = entry.toolUseResult.stdout || '';
-        const stderr = entry.toolUseResult.stderr || '';
+        const toolResult = entry.toolUseResult as Record<string, unknown>;
+        const stdout = (toolResult.stdout as string) || '';
+        const stderr = (toolResult.stderr as string) || '';
         const preview = (stdout || stderr).slice(0, 200).replace(/\n/g, ' ');
         if (preview.trim()) {
           turns.push({
             role: 'tool',
-            timestamp: entry.timestamp || '',
+            timestamp: (entry.timestamp as string) || '',
             content: `Tool result: ${preview}${(stdout + stderr).length > 200 ? '...' : ''}`,
           });
         }
@@ -73,29 +76,30 @@ async function processTranscript(filePath: string): Promise<string> {
       if (text.trim().length > 3) {
         turns.push({
           role: 'user',
-          timestamp: entry.timestamp || '',
+          timestamp: (entry.timestamp as string) || '',
           content: text.trim(),
         });
       }
     }
 
     // Assistant messages
-    if (entry.type === 'assistant' && entry.message?.content) {
-      if (!model && entry.message.model) model = entry.message.model;
+    if (entry.type === 'assistant' && message?.content) {
+      if (!model && message.model) model = message.model as string;
 
-      for (const block of entry.message.content) {
-        if (block.type === 'text' && block.text?.trim()) {
+      const blocks = message.content as Record<string, unknown>[];
+      for (const block of blocks) {
+        if (block.type === 'text' && (block.text as string)?.trim()) {
           turns.push({
             role: 'assistant',
-            timestamp: entry.timestamp || '',
-            content: block.text.trim(),
+            timestamp: (entry.timestamp as string) || '',
+            content: (block.text as string).trim(),
           });
         } else if (block.type === 'tool_use') {
           // Summarize tool call
-          const name = block.name || 'unknown';
+          const name = (block.name as string) || 'unknown';
           let summary = `**Tool: ${name}**`;
 
-          const input = block.input || {};
+          const input = (block.input || {}) as Record<string, string>;
           if (name === 'Read' || name === 'read') {
             summary = `**Read** \`${input.file_path || input.path || '?'}\``;
           } else if (name === 'Edit' || name === 'edit') {
@@ -119,7 +123,7 @@ async function processTranscript(filePath: string): Promise<string> {
 
           turns.push({
             role: 'tool',
-            timestamp: entry.timestamp || '',
+            timestamp: (entry.timestamp as string) || '',
             content: summary,
           });
         }
@@ -282,10 +286,11 @@ export async function publishLogs(options: PublishOptions = {}): Promise<{ publi
         stdio: 'pipe',
       });
       execFileSync('git', ['push'], { cwd: repoPath, stdio: 'pipe', timeout: 30000 });
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Git operations may fail if not a git repo — that's ok, files are still written
       if (options.verbose) {
-        process.stderr.write(`Git push: ${err.message || err}\n`);
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`Git push: ${msg}\n`);
       }
     }
   }
