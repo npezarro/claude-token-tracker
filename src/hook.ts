@@ -3,12 +3,31 @@
 /**
  * Stop hook entry point for Claude Code.
  * Reads hook JSON from stdin, parses the session transcript, and records usage.
- * Must complete in <5s.
+ * Must complete in <15s (timeout set in settings.json).
  */
 
+import { appendFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { recordSession } from './commands/record.js';
 import { publishLogs } from './commands/publish-logs.js';
 import { loadConfig } from './config/config.js';
+import { getDataDir } from './storage/usage-log.js';
+
+function getErrorLogPath(): string {
+  return join(getDataDir(), 'errors.log');
+}
+
+async function logError(context: string, error: unknown): Promise<void> {
+  const ts = new Date().toISOString();
+  const msg = error instanceof Error ? `${error.message}\n${error.stack}` : String(error);
+  const line = `[${ts}] ${context}: ${msg}\n`;
+  try {
+    await appendFile(getErrorLogPath(), line, 'utf-8');
+  } catch {
+    // Last resort: write to stderr so it shows up in hook output
+    process.stderr.write(line);
+  }
+}
 
 async function main() {
   // Read stdin (non-blocking, with timeout)
@@ -29,7 +48,8 @@ async function main() {
   let hookData: any;
   try {
     hookData = JSON.parse(input);
-  } catch {
+  } catch (err) {
+    await logError('JSON parse failed', err);
     process.exit(0);
   }
 
@@ -47,10 +67,17 @@ async function main() {
     // Don't await — the hook must finish fast
     loadConfig().then(config => {
       if (config.sessionLogsPath) {
-        publishLogs({ repoPath: config.sessionLogsPath, since: result.startedAt }).catch(() => {});
+        publishLogs({ repoPath: config.sessionLogsPath, since: result.startedAt }).catch((err) => {
+          logError('publishLogs failed', err);
+        });
       }
-    }).catch(() => {});
+    }).catch((err) => {
+      logError('loadConfig for publish failed', err);
+    });
   }
 }
 
-main().catch(() => process.exit(0));
+main().catch(async (err) => {
+  await logError('hook main() failed', err);
+  process.exit(0);
+});
