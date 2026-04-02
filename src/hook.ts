@@ -45,18 +45,18 @@ async function main() {
     process.exit(0);
   }
 
-  let hookData: any;
+  let hookData: Record<string, unknown>;
   try {
-    hookData = JSON.parse(input);
+    hookData = JSON.parse(input) as Record<string, unknown>;
   } catch (err) {
     await logError('JSON parse failed', err);
     process.exit(0);
   }
 
   const result = await recordSession({
-    session_id: hookData.session_id,
-    transcript_path: hookData.transcript_path,
-    cwd: hookData.cwd,
+    session_id: hookData.session_id as string,
+    transcript_path: hookData.transcript_path as string,
+    cwd: hookData.cwd as string,
   });
 
   if (result) {
