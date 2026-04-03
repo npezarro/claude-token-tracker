@@ -206,7 +206,7 @@ describe('exportData', () => {
 
     const result = await exportData({ format: 'csv' });
     const dataRow = result.split('\n')[1];
-    // subagentCount is the last column
-    expect(dataRow).toMatch(/,2$/);
+    // subagentCount is second-to-last column (estimatedCostUsd is last)
+    expect(dataRow).toMatch(/,2,/);
   });
 });

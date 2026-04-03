@@ -1,6 +1,7 @@
 import { readUsageLog } from '../storage/usage-log.js';
 import { loadConfig } from '../config/config.js';
 import { getSessionLogUrl } from './publish-logs.js';
+import { estimateCost, formatCost } from '../pricing.js';
 import type { UsageRecord } from '../storage/types.js';
 
 function formatTokens(n: number): string {
@@ -8,6 +9,10 @@ function formatTokens(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
   return n.toString();
+}
+
+function estimateRecordCost(r: UsageRecord): number {
+  return estimateCost(r.model, r.inputTokens, r.outputTokens, r.cacheCreationTokens, r.cacheReadTokens).totalCost;
 }
 
 interface ComponentSummary {
@@ -18,7 +23,9 @@ interface ComponentSummary {
   inputTokens: number;
   outputTokens: number;
   cacheCreationTokens: number;
+  cacheReadTokens: number;
   subagentCount: number;
+  estimatedCost: number;
 }
 
 function summarizeByComponent(records: UsageRecord[]): ComponentSummary[] {
@@ -32,7 +39,9 @@ function summarizeByComponent(records: UsageRecord[]): ComponentSummary[] {
       inputTokens: 0,
       outputTokens: 0,
       cacheCreationTokens: 0,
+      cacheReadTokens: 0,
       subagentCount: 0,
+      estimatedCost: 0,
     };
     existing.sessions++;
     existing.turns += r.turnCount;
@@ -40,7 +49,9 @@ function summarizeByComponent(records: UsageRecord[]): ComponentSummary[] {
     existing.inputTokens += r.inputTokens;
     existing.outputTokens += r.outputTokens;
     existing.cacheCreationTokens += r.cacheCreationTokens;
+    existing.cacheReadTokens += r.cacheReadTokens;
     existing.subagentCount += r.subagents?.length || 0;
+    existing.estimatedCost += estimateRecordCost(r);
     map.set(r.component, existing);
   }
   return [...map.values()].sort((a, b) => b.totalTokens - a.totalTokens);
@@ -62,9 +73,10 @@ function buildSummary(label: string, records: UsageRecord[]): string {
   const totalSessions = components.reduce((s, c) => s + c.sessions, 0);
   const totalTurns = components.reduce((s, c) => s + c.turns, 0);
   const totalSubagents = components.reduce((s, c) => s + c.subagentCount, 0);
+  const totalCost = components.reduce((s, c) => s + c.estimatedCost, 0);
 
   const lines: string[] = [];
-  lines.push(`**${label}** \u2014 ${formatTokens(totalTokens)} tokens, ${totalSessions} sessions, ${totalTurns} turns`);
+  lines.push(`**${label}** \u2014 ${formatTokens(totalTokens)} tokens (${formatCost(totalCost)} API equiv.), ${totalSessions} sessions, ${totalTurns} turns`);
   lines.push('```');
 
   const maxName = Math.max(16, ...components.map(c => c.name.length));
@@ -73,7 +85,7 @@ function buildSummary(label: string, records: UsageRecord[]): string {
     const pct = totalTokens > 0 ? Math.round((c.totalTokens / totalTokens) * 100) : 0;
     const bar = '\u2588'.repeat(Math.max(1, Math.round(pct / 5)));
     lines.push(
-      `${c.name.padEnd(maxName)}  ${formatTokens(c.totalTokens).padStart(8)}  ${String(c.sessions).padStart(4)} sess  ${bar} ${pct}%`
+      `${c.name.padEnd(maxName)}  ${formatTokens(c.totalTokens).padStart(8)}  ${formatCost(c.estimatedCost).padStart(8)}  ${String(c.sessions).padStart(4)} sess  ${bar} ${pct}%`
     );
   }
 
@@ -116,12 +128,13 @@ function buildSessionDetail(label: string, records: UsageRecord[], repoUrl?: str
       const sessionLabel = truncate(s.label || s.sessionId.slice(0, 8), 60);
       const time = s.startedAt ? s.startedAt.slice(5, 16).replace('T', ' ') : '';
       const tokens = `\`${formatTokens(s.totalTokens).padStart(7)}\``;
+      const cost = formatCost(estimateRecordCost(s));
 
       if (repoUrl) {
         const url = getSessionLogUrl(s.sessionId, s.startedAt, repoUrl);
-        lines.push(`\u2003\u2022 ${tokens} ${time} \u2014 [${sessionLabel}](${url})`);
+        lines.push(`\u2003\u2022 ${tokens} (${cost}) ${time} \u2014 [${sessionLabel}](${url})`);
       } else {
-        lines.push(`\u2003\u2022 ${tokens} ${time} \u2014 ${sessionLabel}`);
+        lines.push(`\u2003\u2022 ${tokens} (${cost}) ${time} \u2014 ${sessionLabel}`);
       }
     }
   }
