@@ -277,21 +277,31 @@ export async function publishLogs(options: PublishOptions = {}): Promise<{ publi
   // Save manifest
   saveManifest(repoPath, published);
 
+  // Sync usage.jsonl into the repo for cross-machine access
+  const { getUsageLogPath } = await import('../storage/usage-log.js');
+  const usageLogSrc = getUsageLogPath();
+  const usageLogDest = join(repoPath, 'usage.jsonl');
+  if (existsSync(usageLogSrc)) {
+    const { copyFileSync } = await import('node:fs');
+    copyFileSync(usageLogSrc, usageLogDest);
+  }
+
   // Git commit and push if there are changes
-  if (publishedCount > 0) {
-    try {
-      execFileSync('git', ['add', '-A'], { cwd: repoPath, stdio: 'pipe' });
-      execFileSync('git', ['commit', '-m', `Add ${publishedCount} session logs`], {
-        cwd: repoPath,
-        stdio: 'pipe',
-      });
+  try {
+    execFileSync('git', ['add', '-A'], { cwd: repoPath, stdio: 'pipe' });
+    // Check if there are staged changes
+    const status = execFileSync('git', ['status', '--porcelain'], { cwd: repoPath, encoding: 'utf-8' });
+    if (status.trim()) {
+      const msg = publishedCount > 0
+        ? `Add ${publishedCount} session logs + sync usage data`
+        : 'Sync usage data';
+      execFileSync('git', ['commit', '-m', msg], { cwd: repoPath, stdio: 'pipe' });
       execFileSync('git', ['push'], { cwd: repoPath, stdio: 'pipe', timeout: 30000 });
-    } catch (err: unknown) {
-      // Git operations may fail if not a git repo — that's ok, files are still written
-      if (options.verbose) {
-        const msg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`Git push: ${msg}\n`);
-      }
+    }
+  } catch (err: unknown) {
+    if (options.verbose) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`Git push: ${msg}\n`);
     }
   }
 
