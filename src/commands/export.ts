@@ -1,4 +1,5 @@
 import { readUsageLog } from '../storage/usage-log.js';
+import { estimateCost } from '../pricing.js';
 import { writeFile } from 'node:fs/promises';
 
 interface ExportOptions {
@@ -34,14 +35,16 @@ export async function exportData(options: ExportOptions = {}): Promise<string> {
       'sessionId', 'label', 'component', 'cwd', 'repo', 'gitBranch',
       'startedAt', 'endedAt', 'durationMinutes',
       'inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens', 'totalTokens',
-      'model', 'claudeCodeVersion', 'turnCount', 'subagentCount',
+      'model', 'claudeCodeVersion', 'turnCount', 'subagentCount', 'estimatedCostUsd',
     ];
-    const rows = records.map(r => [
+    const rows = records.map(r => {
+      const cost = estimateCost(r.model, r.inputTokens, r.outputTokens, r.cacheCreationTokens, r.cacheReadTokens);
+      return [
       r.sessionId, r.label || '', r.component, r.cwd, r.repo || '', r.gitBranch || '',
       r.startedAt, r.endedAt, r.durationMinutes,
       r.inputTokens, r.outputTokens, r.cacheCreationTokens, r.cacheReadTokens, r.totalTokens,
-      r.model, r.claudeCodeVersion, r.turnCount, r.subagents?.length || 0,
-    ].map(v => {
+      r.model, r.claudeCodeVersion, r.turnCount, r.subagents?.length || 0, cost.totalCost.toFixed(4),
+    ];}).map(row => row.map(v => {
       const s = String(v);
       return s.includes(',') || s.includes('"') || s.includes('\n')
         ? `"${s.replace(/"/g, '""')}"`

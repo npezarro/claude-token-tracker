@@ -1,4 +1,5 @@
 import { readUsageLog } from '../storage/usage-log.js';
+import { estimateCost, formatCost } from '../pricing.js';
 import type { UsageRecord } from '../storage/types.js';
 
 type GroupBy = 'component' | 'day' | 'session' | 'model';
@@ -13,6 +14,10 @@ interface ReportOptions {
   topN?: number; // limit per-session detail to top N per component
 }
 
+function estimateRecordCost(r: UsageRecord): number {
+  return estimateCost(r.model, r.inputTokens, r.outputTokens, r.cacheCreationTokens, r.cacheReadTokens).totalCost;
+}
+
 interface ReportRow {
   label: string;
   sessions: number;
@@ -23,6 +28,7 @@ interface ReportRow {
   cacheReadTokens: number;
   totalTokens: number;
   durationMinutes: number;
+  estimatedCost: number;
 }
 
 function formatTokens(n: number): string {
@@ -112,6 +118,7 @@ export async function report(options: ReportOptions = {}): Promise<string> {
       cacheReadTokens: recs.reduce((s, r) => s + r.cacheReadTokens, 0),
       totalTokens: recs.reduce((s, r) => s + r.totalTokens, 0),
       durationMinutes: recs.reduce((s, r) => s + r.durationMinutes, 0),
+      estimatedCost: recs.reduce((s, r) => s + estimateRecordCost(r), 0),
     });
   }
 
@@ -129,6 +136,7 @@ export async function report(options: ReportOptions = {}): Promise<string> {
     cacheReadTokens: rows.reduce((s, r) => s + r.cacheReadTokens, 0),
     totalTokens: rows.reduce((s, r) => s + r.totalTokens, 0),
     durationMinutes: rows.reduce((s, r) => s + r.durationMinutes, 0),
+    estimatedCost: rows.reduce((s, r) => s + r.estimatedCost, 0),
   };
 
   // Render summary table
@@ -141,6 +149,7 @@ export async function report(options: ReportOptions = {}): Promise<string> {
     padLeft('Output', 10),
     padLeft('Cache-W', 10),
     padLeft('Total', 12),
+    padLeft('Est. Cost', 10),
   ].join('  ');
 
   const separator = '-'.repeat(header.length);
@@ -155,6 +164,7 @@ export async function report(options: ReportOptions = {}): Promise<string> {
       padLeft(formatTokens(row.outputTokens), 10),
       padLeft(formatTokens(row.cacheCreationTokens), 10),
       padLeft(formatTokens(row.totalTokens), 12),
+      padLeft(formatCost(row.estimatedCost), 10),
     ].join('  '));
   }
 
@@ -167,6 +177,7 @@ export async function report(options: ReportOptions = {}): Promise<string> {
     padLeft(formatTokens(totals.outputTokens), 10),
     padLeft(formatTokens(totals.cacheCreationTokens), 10),
     padLeft(formatTokens(totals.totalTokens), 12),
+    padLeft(formatCost(totals.estimatedCost), 10),
   ].join('  '));
 
   // Date range
@@ -194,11 +205,12 @@ export async function report(options: ReportOptions = {}): Promise<string> {
       lines.push(`  ${componentName} (${recs.length} sessions)`);
 
       for (const s of shown) {
-        const label = truncate(s.label || s.sessionId.slice(0, 8), 50);
+        const label = truncate(s.label || s.sessionId.slice(0, 8), 48);
         const time = s.startedAt ? s.startedAt.slice(5, 16).replace('T', ' ') : '';
         const dur = formatDuration(s.durationMinutes);
+        const cost = formatCost(estimateRecordCost(s));
         lines.push(
-          `    ${padRight(label, 52)} ${padLeft(formatTokens(s.totalTokens), 8)}  ${padLeft(String(s.turnCount), 4)} turns  ${padLeft(dur, 6)}  ${time}`
+          `    ${padRight(label, 50)} ${padLeft(formatTokens(s.totalTokens), 8)}  ${padLeft(cost, 8)}  ${padLeft(String(s.turnCount), 4)} turns  ${padLeft(dur, 6)}  ${time}`
         );
       }
 
