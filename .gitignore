@@ -7,3 +7,5 @@ dist/
 *.tgz
 *.pem
 credentials.json
+*.key
+.DS_Store
