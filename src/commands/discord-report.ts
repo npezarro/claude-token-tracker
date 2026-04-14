@@ -4,7 +4,7 @@ import { getSessionLogUrl } from './publish-logs.js';
 import { estimateCost, formatCost } from '../pricing.js';
 import type { UsageRecord } from '../storage/types.js';
 
-function formatTokens(n: number): string {
+export function formatTokens(n: number): string {
   if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + 'B';
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
@@ -57,7 +57,7 @@ function summarizeByComponent(records: UsageRecord[]): ComponentSummary[] {
   return [...map.values()].sort((a, b) => b.totalTokens - a.totalTokens);
 }
 
-function truncate(s: string, max: number): string {
+export function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + '\u2026';
 }
@@ -144,6 +144,46 @@ function buildSessionDetail(label: string, records: UsageRecord[], repoUrl?: str
 
 const REPORT_FOOTER = `_Use \`!usage help\` for available commands_`;
 
+/**
+ * Split an array of content chunks so that no chunk exceeds Discord's 2000-char limit.
+ * Splits first on double newlines, then on single newlines if a paragraph is still too long.
+ */
+export function splitChunksForDiscord(chunks: string[], maxLen = 1950): string[] {
+  const finalChunks: string[] = [];
+  for (const chunk of chunks) {
+    if (chunk.length <= 2000) {
+      finalChunks.push(chunk);
+    } else {
+      const parts = chunk.split('\n\n');
+      let current = '';
+      for (const part of parts) {
+        if (current.length + part.length + 2 > maxLen) {
+          if (current.trim()) finalChunks.push(current.trim());
+          if (part.length > maxLen) {
+            const sublines = part.split('\n');
+            let sub = '';
+            for (const line of sublines) {
+              if (sub.length + line.length + 1 > maxLen) {
+                if (sub.trim()) finalChunks.push(sub.trim());
+                sub = line;
+              } else {
+                sub += (sub ? '\n' : '') + line;
+              }
+            }
+            current = sub;
+          } else {
+            current = part;
+          }
+        } else {
+          current += (current ? '\n\n' : '') + part;
+        }
+      }
+      if (current.trim()) finalChunks.push(current.trim());
+    }
+  }
+  return finalChunks;
+}
+
 export interface DiscordReportOptions {
   webhookUrl?: string;
   period?: '24h' | '7d' | 'both';
@@ -191,43 +231,7 @@ export async function generateDiscordReportChunks(options: DiscordReportOptions 
     if (detail7d) chunks.push(detail7d);
   }
 
-  // Split any chunk that exceeds 2000 chars
-  const finalChunks: string[] = [];
-  for (const chunk of chunks) {
-    if (chunk.length <= 2000) {
-      finalChunks.push(chunk);
-    } else {
-      // Split on double newlines, respecting the limit
-      const parts = chunk.split('\n\n');
-      let current = '';
-      for (const part of parts) {
-        if (current.length + part.length + 2 > 1950) {
-          if (current.trim()) finalChunks.push(current.trim());
-          // If a single part exceeds the limit, split on single newlines
-          if (part.length > 1950) {
-            const sublines = part.split('\n');
-            let sub = '';
-            for (const line of sublines) {
-              if (sub.length + line.length + 1 > 1950) {
-                if (sub.trim()) finalChunks.push(sub.trim());
-                sub = line;
-              } else {
-                sub += (sub ? '\n' : '') + line;
-              }
-            }
-            current = sub;
-          } else {
-            current = part;
-          }
-        } else {
-          current += (current ? '\n\n' : '') + part;
-        }
-      }
-      if (current.trim()) finalChunks.push(current.trim());
-    }
-  }
-
-  return finalChunks;
+  return splitChunksForDiscord(chunks);
 }
 
 /** Backwards-compatible: return all chunks joined (for --dry-run CLI) */
