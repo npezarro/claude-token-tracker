@@ -66,8 +66,18 @@ export async function parseTranscript(filePath: string): Promise<ParsedTranscrip
     // Capture first user prompt as session label
     if (!firstPrompt && entry.type === 'user' && message?.role === 'user') {
       const content = message.content;
-      if (typeof content === 'string' && content.length > 3) {
-        firstPrompt = content.replace(/\s+/g, ' ').trim().slice(0, 100);
+      let text = '';
+      if (typeof content === 'string') {
+        text = content;
+      } else if (Array.isArray(content)) {
+        // Handle array content blocks (e.g., [{type: "text", text: "..."}])
+        const block = (content as Array<Record<string, unknown>>).find(
+          b => b.type === 'text' && typeof b.text === 'string'
+        );
+        if (block) text = block.text as string;
+      }
+      if (text.length > 3) {
+        firstPrompt = text.replace(/\s+/g, ' ').trim().slice(0, 100);
       }
     }
 

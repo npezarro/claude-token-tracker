@@ -121,6 +121,77 @@ describe('parseTranscript', () => {
     expect(result.firstPrompt).toBe('Fix the login bug');
   });
 
+  it('captures firstPrompt from array content blocks', async () => {
+    const file = join(tmpDir, 'session.jsonl');
+    writeFileSync(file, makeJsonl([
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Fix the authentication middleware' },
+          ],
+        },
+      },
+    ]));
+
+    const result = await parseTranscript(file);
+    expect(result.firstPrompt).toBe('Fix the authentication middleware');
+  });
+
+  it('skips non-text blocks and uses first text block for firstPrompt', async () => {
+    const file = join(tmpDir, 'session.jsonl');
+    writeFileSync(file, makeJsonl([
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', content: 'some tool output' },
+            { type: 'text', text: 'Refactor the database layer' },
+          ],
+        },
+      },
+    ]));
+
+    const result = await parseTranscript(file);
+    expect(result.firstPrompt).toBe('Refactor the database layer');
+  });
+
+  it('falls back to empty firstPrompt when array has no text blocks', async () => {
+    const file = join(tmpDir, 'session.jsonl');
+    writeFileSync(file, makeJsonl([
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', content: 'output' },
+          ],
+        },
+      },
+    ]));
+
+    const result = await parseTranscript(file);
+    expect(result.firstPrompt).toBe('');
+  });
+
+  it('truncates array content firstPrompt to 100 chars', async () => {
+    const file = join(tmpDir, 'session.jsonl');
+    writeFileSync(file, makeJsonl([
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: 'a'.repeat(200) }],
+        },
+      },
+    ]));
+
+    const result = await parseTranscript(file);
+    expect(result.firstPrompt).toHaveLength(100);
+  });
+
   it('captures git branch from metadata', async () => {
     const file = join(tmpDir, 'session.jsonl');
     writeFileSync(file, makeJsonl([
