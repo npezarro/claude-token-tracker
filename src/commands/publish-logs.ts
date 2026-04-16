@@ -315,3 +315,6 @@ export function getSessionLogUrl(sessionId: string, startedAt: string, repoUrl: 
   const date = startedAt ? startedAt.slice(0, 7) : 'unknown';
   return `${repoUrl}/blob/main/${date}/${sessionId}.md`;
 }
+
+// Exported for testing
+export { processTranscript, getPublishedSessions, saveManifest };
