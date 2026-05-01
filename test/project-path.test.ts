@@ -12,8 +12,8 @@ describe('decodeProjectPath', () => {
   });
 
   it('decodes -mnt-c-Users- prefix for WSL paths', () => {
-    expect(decodeProjectPath('-mnt-c-Users-npezarro-repos-app'))
-      .toBe('/mnt/c/Users/npezarro/repos/app');
+    expect(decodeProjectPath('-mnt-c-Users-testuser-repos-app'))
+      .toBe('/mnt/c/Users/testuser/repos/app');
   });
 
   it('decodes -mnt-d- prefix', () => {
