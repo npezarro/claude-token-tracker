@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { fileURLToPath } from 'node:url';
 import { recordSession } from './commands/record.js';
 import { backfill } from './commands/backfill.js';
 import { report } from './commands/report.js';
@@ -9,20 +10,17 @@ import { getUsageLogPath } from './storage/usage-log.js';
 import { generateDiscordReport, postDiscordReport } from './commands/discord-report.js';
 import { publishLogs } from './commands/publish-logs.js';
 
-const args = process.argv.slice(2);
-const command = args[0];
-
-function getFlag(name: string): string | undefined {
+export function getFlag(args: string[], name: string): string | undefined {
   const idx = args.indexOf(`--${name}`);
   if (idx === -1) return undefined;
   return args[idx + 1];
 }
 
-function hasFlag(name: string): boolean {
+export function hasFlag(args: string[], name: string): boolean {
   return args.includes(`--${name}`);
 }
 
-function printHelp() {
+export function printHelp() {
   console.log(`claude-token-tracker — Per-component token usage tracking for Claude Code
 
 Usage:
@@ -63,7 +61,9 @@ Options:
 `);
 }
 
-async function main() {
+export async function runCli(args: string[]) {
+  const command = args[0];
+
   switch (command) {
     case 'record': {
       // Read from stdin if piped
@@ -84,9 +84,9 @@ async function main() {
         }
       } else {
         // Manual mode with flags
-        const sessionId = getFlag('session-id');
-        const transcriptPath = getFlag('transcript-path');
-        const cwd = getFlag('cwd');
+        const sessionId = getFlag(args, 'session-id');
+        const transcriptPath = getFlag(args, 'transcript-path');
+        const cwd = getFlag(args, 'cwd');
         if (!transcriptPath) {
           console.error('Usage: claude-token-tracker record --transcript-path <path> [--session-id <id>] [--cwd <dir>]');
           process.exit(1);
@@ -103,24 +103,24 @@ async function main() {
 
     case 'backfill': {
       const result = await backfill({
-        since: getFlag('since'),
-        project: getFlag('project'),
-        verbose: hasFlag('verbose'),
+        since: getFlag(args, 'since'),
+        project: getFlag(args, 'project'),
+        verbose: hasFlag(args, 'verbose'),
       });
       console.log(`Backfill complete: ${result.recorded} recorded, ${result.skipped} skipped, ${result.errors} errors`);
       break;
     }
 
     case 'report': {
-      const groupBy = getFlag('by') as 'component' | 'day' | 'session' | 'model' | undefined;
-      const topN = getFlag('top') ? parseInt(getFlag('top')!, 10) : undefined;
+      const groupBy = getFlag(args, 'by') as 'component' | 'day' | 'session' | 'model' | undefined;
+      const topN = getFlag(args, 'top') ? parseInt(getFlag(args, 'top')!, 10) : undefined;
       const output = await report({
         groupBy,
-        since: getFlag('since'),
-        until: getFlag('until'),
-        component: getFlag('component'),
-        includeSubagents: hasFlag('subagents'),
-        hideSessions: hasFlag('no-sessions'),
+        since: getFlag(args, 'since'),
+        until: getFlag(args, 'until'),
+        component: getFlag(args, 'component'),
+        includeSubagents: hasFlag(args, 'subagents'),
+        hideSessions: hasFlag(args, 'no-sessions'),
         topN,
       });
       console.log(output);
@@ -129,11 +129,11 @@ async function main() {
 
     case 'export': {
       const output = await exportData({
-        format: getFlag('format') as 'json' | 'csv' | undefined,
-        output: getFlag('output'),
-        since: getFlag('since'),
-        until: getFlag('until'),
-        component: getFlag('component'),
+        format: getFlag(args, 'format') as 'json' | 'csv' | undefined,
+        output: getFlag(args, 'output'),
+        since: getFlag(args, 'since'),
+        until: getFlag(args, 'until'),
+        component: getFlag(args, 'component'),
       });
       console.log(output);
       break;
@@ -170,9 +170,9 @@ async function main() {
     }
 
     case 'discord-report': {
-      const period = getFlag('period') as '24h' | '7d' | 'both' | undefined;
-      const webhook = getFlag('webhook');
-      const dryRun = hasFlag('dry-run');
+      const period = getFlag(args, 'period') as '24h' | '7d' | 'both' | undefined;
+      const webhook = getFlag(args, 'webhook');
+      const dryRun = hasFlag(args, 'dry-run');
 
       if (dryRun) {
         const content = await generateDiscordReport({ period });
@@ -191,10 +191,10 @@ async function main() {
     case 'publish-logs': {
       const config = await loadConfig();
       const result = await publishLogs({
-        repoPath: getFlag('repo-path') || config.sessionLogsPath,
-        since: getFlag('since'),
-        force: hasFlag('force'),
-        verbose: hasFlag('verbose'),
+        repoPath: getFlag(args, 'repo-path') || config.sessionLogsPath,
+        since: getFlag(args, 'since'),
+        force: hasFlag(args, 'force'),
+        verbose: hasFlag(args, 'verbose'),
       });
       console.log(`Published ${result.published} session logs, ${result.skipped} skipped`);
       break;
@@ -215,7 +215,10 @@ async function main() {
   }
 }
 
-main().catch(err => {
-  console.error(err.message || err);
-  process.exit(1);
-});
+// Only auto-execute when run as the main script (not when imported for testing)
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  runCli(process.argv.slice(2)).catch(err => {
+    console.error(err.message || err);
+    process.exit(1);
+  });
+}
