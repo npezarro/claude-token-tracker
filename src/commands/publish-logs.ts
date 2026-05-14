@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, writeFileSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -284,6 +284,17 @@ export async function publishLogs(options: PublishOptions = {}): Promise<{ publi
   if (existsSync(usageLogSrc)) {
     const { copyFileSync } = await import('node:fs');
     copyFileSync(usageLogSrc, usageLogDest);
+  }
+
+  // Clean up stale git lock files left by killed hook processes
+  const lockFile = join(repoPath, '.git', 'index.lock');
+  if (existsSync(lockFile)) {
+    try {
+      const lockAgeMs = Date.now() - statSync(lockFile).mtimeMs;
+      if (lockAgeMs > 60_000) {
+        unlinkSync(lockFile);
+      }
+    } catch { /* ignore */ }
   }
 
   // Git commit and push if there are changes
