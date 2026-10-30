@@ -38,3 +38,7 @@ npm run build     # tsc
 - API-equivalent pricing (not actual billing) — shows what usage would cost at API rates
 - Stop hook must complete in <15s (Claude Code constraint)
 - Subagent detection: `src/parser/subagent.ts` — identifies spawned agent sessions
+
+## Known Gotchas
+
+- **Pricing table prefix match (fixed PR #32, 2026-10-30):** `normalizeModel`'s prefix-match fallback skips a table key when the remainder after it looks like a version continuation (`/^-\d/`), before accepting the match. Without that check, a base key like `claude-opus-4` is also a string prefix of every newer dash-notation id (`claude-opus-4-8`), so the prefix match silently resolves a brand-new model to the OLDER base key's price instead of falling through to the family/latest-default heuristic. Any new entry added to `MODEL_PRICING` in `src/pricing.ts` needs a regression test for the next not-yet-released model in the same family, not just the ones already in the table.
