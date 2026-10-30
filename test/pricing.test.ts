@@ -51,16 +51,40 @@ describe('normalizeModel (via estimateCost)', () => {
   });
 
   it('handles dot notation version numbers via heuristic fallback', () => {
-    // Note: 'claude-opus-4.6' prefix-matches 'claude-opus-4' before reaching
-    // the heuristic, so it resolves to opus 4 rates ($15/MTok).
-    // Dot notation isn't used in transcripts (they use dash: 4-6), so this
-    // is an edge case that doesn't affect real data.
+    // Note: 'claude-opus-4.6' prefix-matches 'claude-opus-4' (the remainder
+    // '.6' is not a dash-version segment), so it resolves to opus 4 rates
+    // ($15/MTok). Dot notation isn't used in transcripts (they use dash: 4-6),
+    // so this is an edge case that doesn't affect real data.
     const cost46 = estimateCost('claude-opus-4.6', 1_000_000, 0, 0, 0);
     expect(cost46.inputCost).toBe(15); // prefix-matches claude-opus-4
 
     // haiku-3.5 doesn't prefix-match any key, so the heuristic resolves it
     const cost35 = estimateCost('claude-haiku-3.5', 1_000_000, 0, 0, 0);
     expect(cost35.inputCost).toBe(0.80);
+  });
+
+  it('prices newer dash-notation versions at the latest family rate, not the oldest', () => {
+    // A newer model absent from the table (e.g. claude-opus-4-8) arrives in
+    // real transcripts as a dash-version string. The base key 'claude-opus-4'
+    // must NOT swallow it and bill it at Opus 4.0 rates ($15/MTok); it should
+    // default to the latest known opus rate, exactly like 'claude-opus-unknown'.
+    expect(estimateCost('claude-opus-4-7', 1_000_000, 0, 0, 0).inputCost).toBe(5);
+    expect(estimateCost('claude-opus-4-8', 1_000_000, 0, 0, 0).inputCost).toBe(5);
+    // ...and still resolves once the [1m] context-window suffix is stripped
+    expect(estimateCost('claude-opus-4-8[1m]', 1_000_000, 0, 0, 0).inputCost).toBe(5);
+    // sonnet/haiku newer versions likewise fall to their family's latest rate
+    expect(estimateCost('claude-sonnet-4-8', 1_000_000, 0, 0, 0).inputCost).toBe(3);
+    expect(estimateCost('claude-haiku-4-8', 1_000_000, 0, 0, 0).inputCost).toBe(1);
+  });
+
+  it('still resolves known bare and minor versions to their own rate (regression)', () => {
+    // The fix must not disturb models that legitimately match a base/minor key.
+    expect(estimateCost('claude-opus-4', 1_000_000, 0, 0, 0).inputCost).toBe(15);   // Opus 4.0
+    expect(estimateCost('claude-opus-4-1', 1_000_000, 0, 0, 0).inputCost).toBe(15); // Opus 4.1
+    expect(estimateCost('claude-opus-4-6', 1_000_000, 0, 0, 0).inputCost).toBe(5);  // Opus 4.6
+    expect(estimateCost('claude-sonnet-4', 1_000_000, 0, 0, 0).inputCost).toBe(3);
+    // dated known variants (date stripped) resolve exactly, not via fallback
+    expect(estimateCost('claude-haiku-4-5-20251001', 1_000_000, 0, 0, 0).inputCost).toBe(1);
   });
 
   it('returns zero cost for empty model string', () => {

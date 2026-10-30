@@ -45,9 +45,16 @@ function normalizeModel(model: string): string {
   // Try exact match first
   if (MODEL_PRICING[normalized]) return normalized;
 
-  // Try prefix matching (e.g., "claude-opus-4-6" matches "claude-opus-4-6")
+  // Try prefix matching (e.g. an undated/suffixed variant of a known key).
+  // Skip a base key when the remainder is itself a version segment: the base
+  // "claude-opus-4" must NOT swallow the newer "claude-opus-4-8", which is a
+  // distinct, newer model. Letting it match would bill an Opus 4.8 session at
+  // Opus 4.0 rates ($15/MTok vs $5). Fall through to the family heuristic
+  // below instead, which defaults to the latest known rate, not the oldest.
   for (const key of Object.keys(MODEL_PRICING)) {
-    if (normalized.startsWith(key)) return key;
+    if (!normalized.startsWith(key)) continue;
+    if (/^-\d/.test(normalized.slice(key.length))) continue;
+    return key;
   }
 
   // Fallback heuristic: extract model family
